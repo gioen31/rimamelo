@@ -158,7 +158,6 @@ function getRandomBeatPath(genre) {
 function calculateDimensions() {
     const wrapperHeight = gridWrapper.clientHeight;
     if (wrapperHeight <= 0) {
-        // Ancora non visibile, riprova più tardi (verrà chiamato di nuovo)
         return false;
     }
     rowHeight = wrapperHeight / VISIBLE_ROWS;
@@ -178,9 +177,9 @@ function generateGrid(difficulty) {
 
     let coppie;
     if (difficulty === 'easy') {
-        coppie = shuffleArray(rimeCoppieEasy).slice(0, 32);
+        coppie = shuffleArray(rimeCoppieEasy).slice(0, 31); // 31 coppie per 62 righe
     } else {
-        coppie = shuffleArray(rimeCoppieHard).slice(0, 32);
+        coppie = shuffleArray(rimeCoppieHard).slice(0, 31);
     }
 
     // Per ogni coppia, decidiamo casualmente l'ordine (invertito o no)
@@ -192,18 +191,21 @@ function generateGrid(difficulty) {
         }
     });
 
+    // Le prime due righe (indici 0 e 1) della quarta colonna sono vuote
     const fourthColumnData = [];
-    for (let pairIndex = 0; pairIndex < 32; pairIndex++) {
+    fourthColumnData.push({ text: '', colorClass: 'empty' });
+    fourthColumnData.push({ text: '', colorClass: 'empty' });
+
+    // Ora aggiungiamo le 31 coppie (62 elementi) per le righe 2-63
+    for (let pairIndex = 0; pairIndex < 31; pairIndex++) {
         const isBlue = pairIndex % 2 === 0;
         const colorClass = isBlue ? 'word-blue' : 'word-red';
         const pair = pairsWithOrder[pairIndex];
 
-        // Primo elemento della coppia (riga pari della coppia)
         let text1 = pair[0];
         let class1 = colorClass;
         if (text1 === '?') class1 += ' question';
 
-        // Secondo elemento (riga dispari della coppia)
         let text2 = pair[1];
         let class2 = colorClass;
         if (text2 === '?') class2 += ' question';
@@ -212,6 +214,7 @@ function generateGrid(difficulty) {
         fourthColumnData.push({ text: text2, colorClass: class2 });
     }
 
+    // Costruzione delle celle (4 colonne x 64 righe)
     for (let row = 0; row < TOTAL_ROWS; row++) {
         for (let col = 0; col < TOTAL_COLS; col++) {
             const cell = document.createElement('div');
@@ -221,7 +224,7 @@ function generateGrid(difficulty) {
             } else {
                 const data = fourthColumnData[row];
                 cell.textContent = data.text;
-                // CORREZIONE: aggiungi le classi separatamente
+                // Aggiungi le classi separatamente
                 data.colorClass.split(' ').forEach(cls => cell.classList.add(cls));
             }
             grid.appendChild(cell);
@@ -240,8 +243,6 @@ function positionBall(cellIndex) {
     else if (col === 2) cellLeft = 2 * colWidth + colWidth * 0.5;
     else cellLeft = 3 * colWidth + (colWidth * 2) * 0.5;
 
-    // La cella si trova a row * rowHeight + rowHeight/2 rispetto alla griglia non traslata.
-    // Dopo la traslazione, il suo top visuale è (row * rowHeight + rowHeight/2) - currentTranslateY
     const cellTop = row * rowHeight + rowHeight / 2 - currentTranslateY;
 
     ball.style.left = cellLeft + 'px';
@@ -278,10 +279,8 @@ function startGame(genre, difficulty) {
 
     generateGrid(difficulty);
 
-    // Breve attesa per il layout, poi calcola dimensioni e avvia
     setTimeout(() => {
         if (!calculateDimensions()) {
-            // Se ancora non pronto, riprova dopo un altro po'
             setTimeout(() => {
                 calculateDimensions();
                 startGameLoop(genre);
@@ -293,14 +292,12 @@ function startGame(genre, difficulty) {
 }
 
 function startGameLoop(genre) {
-    // Reset stato
     currentCellIndex = 0;
     currentTranslateY = 0;
     grid.style.transform = 'translateY(0px)';
     positionBall(0);
     triggerBallBounce();
 
-    // Riproduci beat
     const beatPath = getRandomBeatPath(genre);
     if (audio) {
         audio.pause();
@@ -384,7 +381,6 @@ window.addEventListener('resize', () => {
     if (isPlaying) {
         calculateDimensions();
         positionBall(currentCellIndex);
-        // Mantieni coerenza traslazione
         const row = Math.floor(currentCellIndex / TOTAL_COLS);
         updateViewForRow(row);
     }
@@ -394,7 +390,6 @@ window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && isPlaying) stopGame();
 });
 
-// Nascondi pallina all'avvio
 ball.style.left = '-100px';
 ball.style.top = '-100px';
 
