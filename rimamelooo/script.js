@@ -287,7 +287,7 @@ function shuffleArray(arr) {
 
 function getRandomBeatPath(genre) {
     const num = Math.floor(Math.random() * 3) + 1;
-    return `audio/${genre}${num}.mp3`;
+    return `/audio/${genre}${num}.mp3`;
 }
 
 // ==================== GESTIONE DIMENSIONI GRIGLIA ====================
