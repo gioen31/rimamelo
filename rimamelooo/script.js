@@ -53,7 +53,6 @@ const rimeCoppieEasy = [
 ];
 
 // ==================== LISTA RIME (HARD) ====================
-// Ogni coppia contiene una parola e un punto interrogativo
 const rimeCoppieHard = [
     ['finito', '?'],
     ['contrasti', '?'],
@@ -109,13 +108,20 @@ const rimeCoppieHard = [
 
 // ==================== COSTANTI ====================
 const BPM_TIMING = {
-    boombap: 1333.34, // 90 BPM, intervallo per cella
-    trap: 857.14      // 140 BPM
+    boombap: 1333.34,
+    trap: 857.14
 };
 const VISIBLE_ROWS = 4;
 const TOTAL_ROWS = 64;
 const TOTAL_COLS = 4;
 const TOTAL_CELLS = TOTAL_ROWS * TOTAL_COLS;
+
+// Durata dell'animazione di salto (millisecondi) – regolabile per velocità
+const JUMP_DURATION = {
+    boombap: 200,  // più lento, ma comunque scattante
+    trap: 150
+};
+const ARC_HEIGHT = 24; // altezza del "saltello" in pixel
 
 // ==================== STATO GLOBALE ====================
 let selectedGenre = null;
@@ -126,7 +132,12 @@ let audio = null;
 let isPlaying = false;
 let rowHeight = 0;
 let colWidth = 0;
-let currentTranslateY = 0; // traslazione corrente della griglia
+let currentTranslateY = 0;
+
+// Animazione
+let animationFrameId = null;
+let lastBallFrom = { left: 0, top: 0 };
+let lastBallTo = { left: 0, top: 0 };
 
 // ==================== ELEMENTI DOM ====================
 const genreScreen = document.getElementById('genre-screen');
@@ -157,14 +168,12 @@ function getRandomBeatPath(genre) {
 // ==================== GESTIONE DIMENSIONI GRIGLIA ====================
 function calculateDimensions() {
     const wrapperHeight = gridWrapper.clientHeight;
-    if (wrapperHeight <= 0) {
-        return false;
-    }
+    if (wrapperHeight <= 0) return false;
     rowHeight = wrapperHeight / VISIBLE_ROWS;
     grid.style.gridTemplateRows = `repeat(${TOTAL_ROWS}, ${rowHeight}px)`;
     grid.style.height = `${TOTAL_ROWS * rowHeight}px`;
     const wrapperWidth = gridWrapper.clientWidth;
-    const totalFr = 1 + 1 + 1 + 2; // 5 frazioni
+    const totalFr = 1 + 1 + 1 + 2;
     colWidth = wrapperWidth / totalFr;
     return true;
 }
@@ -177,26 +186,20 @@ function generateGrid(difficulty) {
 
     let coppie;
     if (difficulty === 'easy') {
-        coppie = shuffleArray(rimeCoppieEasy).slice(0, 31); // 31 coppie per 62 righe
+        coppie = shuffleArray(rimeCoppieEasy).slice(0, 31);
     } else {
         coppie = shuffleArray(rimeCoppieHard).slice(0, 31);
     }
 
-    // Per ogni coppia, decidiamo casualmente l'ordine (invertito o no)
     const pairsWithOrder = coppie.map(pair => {
-        if (Math.random() < 0.5) {
-            return [pair[0], pair[1]];
-        } else {
-            return [pair[1], pair[0]];
-        }
+        if (Math.random() < 0.5) return [pair[0], pair[1]];
+        else return [pair[1], pair[0]];
     });
 
-    // Le prime due righe (indici 0 e 1) della quarta colonna sono vuote
     const fourthColumnData = [];
     fourthColumnData.push({ text: '', colorClass: 'empty' });
     fourthColumnData.push({ text: '', colorClass: 'empty' });
 
-    // Ora aggiungiamo le 31 coppie (62 elementi) per le righe 2-63
     for (let pairIndex = 0; pairIndex < 31; pairIndex++) {
         const isBlue = pairIndex % 2 === 0;
         const colorClass = isBlue ? 'word-blue' : 'word-red';
@@ -214,7 +217,6 @@ function generateGrid(difficulty) {
         fourthColumnData.push({ text: text2, colorClass: class2 });
     }
 
-    // Costruzione delle celle (4 colonne x 64 righe)
     for (let row = 0; row < TOTAL_ROWS; row++) {
         for (let col = 0; col < TOTAL_COLS; col++) {
             const cell = document.createElement('div');
@@ -224,7 +226,6 @@ function generateGrid(difficulty) {
             } else {
                 const data = fourthColumnData[row];
                 cell.textContent = data.text;
-                // Aggiungi le classi separatamente
                 data.colorClass.split(' ').forEach(cls => cell.classList.add(cls));
             }
             grid.appendChild(cell);
@@ -232,30 +233,75 @@ function generateGrid(difficulty) {
     }
 }
 
-// ==================== POSIZIONAMENTO PALLINA ====================
-function positionBall(cellIndex) {
+// ==================== COORDINATE CELLA ====================
+function getCellPosition(cellIndex) {
     const row = Math.floor(cellIndex / TOTAL_COLS);
     const col = cellIndex % TOTAL_COLS;
 
-    let cellLeft;
-    if (col === 0) cellLeft = colWidth * 0.5;
-    else if (col === 1) cellLeft = colWidth + colWidth * 0.5;
-    else if (col === 2) cellLeft = 2 * colWidth + colWidth * 0.5;
-    else cellLeft = 3 * colWidth + (colWidth * 2) * 0.5;
+    let left;
+    if (col === 0) left = colWidth * 0.5;
+    else if (col === 1) left = colWidth + colWidth * 0.5;
+    else if (col === 2) left = 2 * colWidth + colWidth * 0.5;
+    else left = 3 * colWidth + (colWidth * 2) * 0.5;
 
-    const cellTop = row * rowHeight + rowHeight / 2 - currentTranslateY;
-
-    ball.style.left = cellLeft + 'px';
-    ball.style.top = cellTop + 'px';
+    const top = row * rowHeight + rowHeight / 2 - currentTranslateY;
+    return { left, top };
 }
 
+// ==================== ANIMAZIONE SALTINO ====================
+function animateBall(from, to, duration, onComplete) {
+    // Cancella animazione precedente se esistente
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+
+    const startTime = performance.now();
+
+    function step(now) {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1.0);
+
+        // Interpolazione lineare orizzontale
+        const currentLeft = from.left + (to.left - from.left) * progress;
+
+        // Movimento verticale con parabola sinusoidale verso l'alto
+        const linearTop = from.top + (to.top - from.top) * progress;
+        const arc = -ARC_HEIGHT * Math.sin(Math.PI * progress);
+        const currentTop = linearTop + arc;
+
+        ball.style.left = currentLeft + 'px';
+        ball.style.top = currentTop + 'px';
+
+        if (progress < 1.0) {
+            animationFrameId = requestAnimationFrame(step);
+        } else {
+            // Arrivato esattamente alla posizione finale
+            ball.style.left = to.left + 'px';
+            ball.style.top = to.top + 'px';
+            animationFrameId = null;
+            if (onComplete) onComplete();
+        }
+    }
+
+    animationFrameId = requestAnimationFrame(step);
+}
+
+function stopCurrentAnimation() {
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+}
+
+// ==================== BOUNCE EFFETTO SCALA ====================
 function triggerBallBounce() {
     ball.classList.remove('bounce');
     void ball.offsetWidth;
     ball.classList.add('bounce');
 }
 
-// ==================== GESTIONE SCROLL (AVANZA DI 2 RIGHE) ====================
+// ==================== GESTIONE SCROLL ====================
 function updateViewForRow(row) {
     if (row > 0 && row % 2 === 0) {
         currentTranslateY = row * rowHeight;
@@ -295,7 +341,15 @@ function startGameLoop(genre) {
     currentCellIndex = 0;
     currentTranslateY = 0;
     grid.style.transform = 'translateY(0px)';
-    positionBall(0);
+    stopCurrentAnimation();
+
+    // Posizione iniziale senza animazione
+    const startPos = getCellPosition(0);
+    ball.style.left = startPos.left + 'px';
+    ball.style.top = startPos.top + 'px';
+    lastBallFrom = { ...startPos };
+    lastBallTo = { ...startPos };
+
     triggerBallBounce();
 
     const beatPath = getRandomBeatPath(genre);
@@ -311,6 +365,7 @@ function startGameLoop(genre) {
 
     if (intervalId) clearInterval(intervalId);
     const intervalTime = BPM_TIMING[genre];
+
     intervalId = setInterval(() => {
         if (!isPlaying) return;
 
@@ -320,9 +375,19 @@ function startGameLoop(genre) {
         }
 
         const row = Math.floor(currentCellIndex / TOTAL_COLS);
-        updateViewForRow(row);
-        positionBall(currentCellIndex);
-        triggerBallBounce();
+        updateViewForRow(row); // aggiorna currentTranslateY
+
+        const toPos = getCellPosition(currentCellIndex);
+        const fromPos = { ...lastBallTo }; // ultima posizione raggiunta
+
+        // Avvia animazione di salto
+        animateBall(fromPos, toPos, JUMP_DURATION[genre], () => {
+            // Al termine, registra la nuova posizione e fai bounce
+            lastBallTo = { ...toPos };
+            triggerBallBounce();
+        });
+
+        // Aggiorna subito lastBallFrom per il prossimo tick? No, lastBallTo è la posizione corrente.
     }, intervalTime);
 }
 
@@ -332,6 +397,7 @@ function stopGame() {
         clearInterval(intervalId);
         intervalId = null;
     }
+    stopCurrentAnimation();
     if (audio) {
         audio.pause();
         audio.currentTime = 0;
@@ -379,8 +445,13 @@ btnStop.addEventListener('click', stopGame);
 
 window.addEventListener('resize', () => {
     if (isPlaying) {
+        stopCurrentAnimation();
         calculateDimensions();
-        positionBall(currentCellIndex);
+        // Ricalcola posizione corrente senza animazione
+        const pos = getCellPosition(currentCellIndex);
+        ball.style.left = pos.left + 'px';
+        ball.style.top = pos.top + 'px';
+        lastBallTo = { ...pos };
         const row = Math.floor(currentCellIndex / TOTAL_COLS);
         updateViewForRow(row);
     }

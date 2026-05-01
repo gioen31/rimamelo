@@ -246,7 +246,6 @@ h1 {
     grid-template-columns: 1fr 1fr 1fr 2fr;
     width: 100%;
     position: relative;
-    /* La traslazione verrà applicata via JS */
     will-change: transform;
 }
 
@@ -309,9 +308,10 @@ h1 {
     pointer-events: none;
     z-index: 10;
     transform: translate(-50%, -50%);
-    /* Rimossa transizione, movimento istantaneo per sincronia beat */
+    /* La transizione viene impostata dinamicamente via JS */
 }
 
+/* Animazione di bounce (scala) */
 #ball.bounce {
     animation: ballBounce 0.25s ease-out;
 }
@@ -329,6 +329,22 @@ h1 {
     100% {
         transform: translate(-50%, -50%) scale(1);
     }
+}
+
+/* Firma */
+.signature {
+    position: absolute;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 1.1rem;
+    font-weight: 600;
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, #60a5fa, #f87171);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    opacity: 0.85;
 }
 
 /* Responsive */
@@ -360,19 +376,4 @@ h1 {
     .cell {
         font-size: clamp(8px, 3vw, 12px);
     }
-}
-
-.signature {
-    position: absolute;
-    bottom: 24px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 1.1rem;
-    font-weight: 600;
-    letter-spacing: 2px;
-    background: linear-gradient(135deg, #60a5fa, #f87171);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
-    opacity: 0.85;
 }
