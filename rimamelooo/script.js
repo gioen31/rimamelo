@@ -131,6 +131,9 @@ const rimeCoppieEasy = [
     ['sigillo', 'zitto'],
     ['siepe', 'riceve'],
     ['alga', 'salsa'],
+    ['pessimo', 'esito'],
+    ['braciere', 'artificiere'],
+    ['abbronzatura', 'sprovveduta'],
     ['gelo', 'telo']
 ];
 
@@ -223,6 +226,9 @@ const rimeCoppieHard = [
     ['dolce', '?'],
     ['freddo', '?'],
     ['guscio', '?'],
+    ['incoerente', '?'],
+    ['noodles', '?'],
+    ['capezzoli', '?'],
     ['menta', '?'],
     ['amare', '?']
 ];
