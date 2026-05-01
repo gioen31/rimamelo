@@ -253,7 +253,6 @@ const ARC_HEIGHT = 24;
 let selectedGenre = null;
 let selectedDifficulty = null;
 let currentCellIndex = 0;
-let intervalId = null;
 let audio = null;
 let isPlaying = false;
 let rowHeight = 0;
@@ -263,6 +262,7 @@ let currentTranslateY = 0;
 let animationFrameId = null;
 let lastBallFrom = { left: 0, top: 0 };
 let lastBallTo = { left: 0, top: 0 };
+let syncLoopId = null; // per il requestAnimationFrame
 
 // ==================== ELEMENTI DOM ====================
 const genreScreen = document.getElementById('genre-screen');
@@ -287,7 +287,7 @@ function shuffleArray(arr) {
 
 function getRandomBeatPath(genre) {
     const num = Math.floor(Math.random() * 3) + 1;
-    return `/audio/${genre}${num}.mp3`;
+    return `/audio/${genre}${num}.mp3`; // path assoluto come nel tuo codice
 }
 
 // ==================== GESTIONE DIMENSIONI GRIGLIA ====================
@@ -431,9 +431,55 @@ function updateViewForRow(row) {
 
 // ==================== GESTIONE FINE BEAT ====================
 function onBeatEnded() {
-    // Quando il beat finisce, ferma il gioco automaticamente
     if (isPlaying) {
         stopGame();
+    }
+}
+
+// ==================== NUOVO: SYNCH LOOP BASATO SU currentTime ====================
+function startSyncLoop(genre) {
+    const cellInterval = BPM_TIMING[genre];
+    let lastCellIndex = -1;
+
+    function syncTick() {
+        if (!isPlaying || !audio) {
+            // Se il gioco è fermo, fermiamo il loop
+            syncLoopId = null;
+            return;
+        }
+
+        const currentTimeMs = audio.currentTime * 1000;
+        // Calcola quale cella dovrebbe essere attiva adesso
+        let targetCellIndex = Math.floor(currentTimeMs / cellInterval) % TOTAL_CELLS;
+
+        // Se la cella è cambiata (o è la prima iterazione)
+        if (targetCellIndex !== lastCellIndex) {
+            lastCellIndex = targetCellIndex;
+            currentCellIndex = targetCellIndex;
+
+            const row = Math.floor(currentCellIndex / TOTAL_COLS);
+            updateViewForRow(row);
+
+            const toPos = getCellPosition(currentCellIndex);
+            const fromPos = { ...lastBallTo };
+
+            // Avvia l'animazione di salto verso la nuova cella
+            animateBall(fromPos, toPos, JUMP_DURATION[genre], () => {
+                lastBallTo = { ...toPos };
+                triggerBallBounce();
+            });
+        }
+
+        syncLoopId = requestAnimationFrame(syncTick);
+    }
+
+    syncLoopId = requestAnimationFrame(syncTick);
+}
+
+function stopSyncLoop() {
+    if (syncLoopId) {
+        cancelAnimationFrame(syncLoopId);
+        syncLoopId = null;
     }
 }
 
@@ -457,79 +503,70 @@ function startGame(genre, difficulty) {
         if (!calculateDimensions()) {
             setTimeout(() => {
                 calculateDimensions();
-                startGameLoop(genre);
+                prepareAudio(genre);
             }, 100);
             return;
         }
-        startGameLoop(genre);
+        prepareAudio(genre);
     }, 80);
 }
 
-function startGameLoop(genre) {
+function prepareAudio(genre) {
+    // Resetta stato
     currentCellIndex = 0;
     currentTranslateY = 0;
     grid.style.transform = 'translateY(0px)';
     stopCurrentAnimation();
+    stopSyncLoop();
 
     const startPos = getCellPosition(0);
     ball.style.left = startPos.left + 'px';
     ball.style.top = startPos.top + 'px';
     lastBallFrom = { ...startPos };
     lastBallTo = { ...startPos };
-
     triggerBallBounce();
 
+    // Prepara l'audio
     const beatPath = getRandomBeatPath(genre);
     if (audio) {
         audio.pause();
         audio.currentTime = 0;
         audio.removeEventListener('ended', onBeatEnded);
+        audio.removeEventListener('playing', onAudioPlaying); // pulizia
     }
     audio = new Audio(beatPath);
-    audio.loop = false;                  // niente loop
+    audio.loop = false;
     audio.addEventListener('ended', onBeatEnded);
-    audio.play().catch(err => console.warn('Audio play fallito:', err));
 
-    isPlaying = true;
+    // Aspetta che l'audio sia effettivamente in riproduzione
+    audio.addEventListener('playing', function onAudioPlaying() {
+        // Rimuove il listener per evitare chiamate multiple
+        audio.removeEventListener('playing', onAudioPlaying);
+        // Ora l'audio sta suonando, avvia il sync loop
+        isPlaying = true;
+        startSyncLoop(genre);
+    });
 
-    if (intervalId) clearInterval(intervalId);
-    const intervalTime = BPM_TIMING[genre];
-
-    intervalId = setInterval(() => {
-        if (!isPlaying) return;
-
-        currentCellIndex++;
-        if (currentCellIndex >= TOTAL_CELLS) {
-            currentCellIndex = 0;
-        }
-
-        const row = Math.floor(currentCellIndex / TOTAL_COLS);
-        updateViewForRow(row);
-
-        const toPos = getCellPosition(currentCellIndex);
-        const fromPos = { ...lastBallTo };
-
-        animateBall(fromPos, toPos, JUMP_DURATION[genre], () => {
-            lastBallTo = { ...toPos };
-            triggerBallBounce();
-        });
-    }, intervalTime);
+    audio.play().catch(err => {
+        console.warn('Audio play fallito:', err);
+        // Fallback: avvia comunque il gioco se l'audio non può partire
+        isPlaying = true;
+        startSyncLoop(genre);
+    });
 }
 
 function stopGame() {
-    if (!isPlaying) return; // evita chiamate multiple
+    if (!isPlaying) return;
     isPlaying = false;
 
-    if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
-    }
+    stopSyncLoop();
     stopCurrentAnimation();
 
     if (audio) {
         audio.pause();
         audio.currentTime = 0;
         audio.removeEventListener('ended', onBeatEnded);
+        audio.removeEventListener('playing', () => {});
         audio = null;
     }
 
