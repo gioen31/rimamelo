@@ -49,7 +49,7 @@ const rimeCoppieEasy = [
     ['notte', 'rotte'],
     ['fuoco', 'poco'],
     ['stella', 'bella'],
-    ['mare', 'parlare']
+    ['mare', 'parlare'],
     ['ghiaccio', 'braccio'],
     ['vortice', 'ordine'],
     ['silenzio', 'senso'],
