@@ -116,12 +116,11 @@ const TOTAL_ROWS = 64;
 const TOTAL_COLS = 4;
 const TOTAL_CELLS = TOTAL_ROWS * TOTAL_COLS;
 
-// Durata dell'animazione di salto (millisecondi) – regolabile per velocità
 const JUMP_DURATION = {
-    boombap: 200,  // più lento, ma comunque scattante
+    boombap: 200,
     trap: 150
 };
-const ARC_HEIGHT = 24; // altezza del "saltello" in pixel
+const ARC_HEIGHT = 24;
 
 // ==================== STATO GLOBALE ====================
 let selectedGenre = null;
@@ -134,7 +133,6 @@ let rowHeight = 0;
 let colWidth = 0;
 let currentTranslateY = 0;
 
-// Animazione
 let animationFrameId = null;
 let lastBallFrom = { left: 0, top: 0 };
 let lastBallTo = { left: 0, top: 0 };
@@ -250,7 +248,6 @@ function getCellPosition(cellIndex) {
 
 // ==================== ANIMAZIONE SALTINO ====================
 function animateBall(from, to, duration, onComplete) {
-    // Cancella animazione precedente se esistente
     if (animationFrameId) {
         cancelAnimationFrame(animationFrameId);
         animationFrameId = null;
@@ -262,10 +259,7 @@ function animateBall(from, to, duration, onComplete) {
         const elapsed = now - startTime;
         const progress = Math.min(elapsed / duration, 1.0);
 
-        // Interpolazione lineare orizzontale
         const currentLeft = from.left + (to.left - from.left) * progress;
-
-        // Movimento verticale con parabola sinusoidale verso l'alto
         const linearTop = from.top + (to.top - from.top) * progress;
         const arc = -ARC_HEIGHT * Math.sin(Math.PI * progress);
         const currentTop = linearTop + arc;
@@ -276,7 +270,6 @@ function animateBall(from, to, duration, onComplete) {
         if (progress < 1.0) {
             animationFrameId = requestAnimationFrame(step);
         } else {
-            // Arrivato esattamente alla posizione finale
             ball.style.left = to.left + 'px';
             ball.style.top = to.top + 'px';
             animationFrameId = null;
@@ -306,6 +299,14 @@ function updateViewForRow(row) {
     if (row > 0 && row % 2 === 0) {
         currentTranslateY = row * rowHeight;
         grid.style.transform = `translateY(-${currentTranslateY}px)`;
+    }
+}
+
+// ==================== GESTIONE FINE BEAT ====================
+function onBeatEnded() {
+    // Quando il beat finisce, ferma il gioco automaticamente
+    if (isPlaying) {
+        stopGame();
     }
 }
 
@@ -343,7 +344,6 @@ function startGameLoop(genre) {
     grid.style.transform = 'translateY(0px)';
     stopCurrentAnimation();
 
-    // Posizione iniziale senza animazione
     const startPos = getCellPosition(0);
     ball.style.left = startPos.left + 'px';
     ball.style.top = startPos.top + 'px';
@@ -356,9 +356,11 @@ function startGameLoop(genre) {
     if (audio) {
         audio.pause();
         audio.currentTime = 0;
+        audio.removeEventListener('ended', onBeatEnded);
     }
     audio = new Audio(beatPath);
-    audio.loop = true;
+    audio.loop = false;                  // niente loop
+    audio.addEventListener('ended', onBeatEnded);
     audio.play().catch(err => console.warn('Audio play fallito:', err));
 
     isPlaying = true;
@@ -375,36 +377,38 @@ function startGameLoop(genre) {
         }
 
         const row = Math.floor(currentCellIndex / TOTAL_COLS);
-        updateViewForRow(row); // aggiorna currentTranslateY
+        updateViewForRow(row);
 
         const toPos = getCellPosition(currentCellIndex);
-        const fromPos = { ...lastBallTo }; // ultima posizione raggiunta
+        const fromPos = { ...lastBallTo };
 
-        // Avvia animazione di salto
         animateBall(fromPos, toPos, JUMP_DURATION[genre], () => {
-            // Al termine, registra la nuova posizione e fai bounce
             lastBallTo = { ...toPos };
             triggerBallBounce();
         });
-
-        // Aggiorna subito lastBallFrom per il prossimo tick? No, lastBallTo è la posizione corrente.
     }, intervalTime);
 }
 
 function stopGame() {
+    if (!isPlaying) return; // evita chiamate multiple
     isPlaying = false;
+
     if (intervalId) {
         clearInterval(intervalId);
         intervalId = null;
     }
     stopCurrentAnimation();
+
     if (audio) {
         audio.pause();
         audio.currentTime = 0;
+        audio.removeEventListener('ended', onBeatEnded);
         audio = null;
     }
+
     gameScreen.classList.remove('active');
     genreScreen.classList.add('active');
+
     selectedGenre = null;
     selectedDifficulty = null;
     currentCellIndex = 0;
@@ -447,7 +451,6 @@ window.addEventListener('resize', () => {
     if (isPlaying) {
         stopCurrentAnimation();
         calculateDimensions();
-        // Ricalcola posizione corrente senza animazione
         const pos = getCellPosition(currentCellIndex);
         ball.style.left = pos.left + 'px';
         ball.style.top = pos.top + 'px';
